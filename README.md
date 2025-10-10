@@ -1,3 +1,2 @@
-bash
-    git clone https://github.com/GuhanKannan23f2001584/github-user-created.git
-    cd github-user-created
+html
+    <div id="github-status" aria-live="polite" aria-atomic="true"></div>
