@@ -19,11 +19,26 @@
         .loading-spinner {
             display: none;
         }
+        /* Style for the live region to ensure accessibility feedback */
+        #github-status {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1 class="text-center mb-4">GitHub Account Date Viewer</h1>
+
+        <!-- ARIA LIVE REGION FOR STATUS UPDATES -->
+        <div id="github-status" role="status" aria-live="polite"></div>
 
         <form id="github-user-abc123" class="p-4 border rounded shadow-sm bg-white">
             <div class="mb-3">
@@ -71,6 +86,11 @@
             const statusMessage = document.getElementById('statusMessage');
             const loadingSpinner = document.getElementById('loadingSpinner');
             const fetchButton = document.getElementById('fetchButton');
+            const statusLiveRegion = document.getElementById('github-status'); // New element for ARIA live feedback
+
+            function updateStatus(message) {
+                statusLiveRegion.textContent = message;
+            }
 
             function getQueryParams() {
                 const params = new URLSearchParams(window.location.search);
@@ -79,12 +99,8 @@
             }
 
             function parseDateUTC(dateString) {
-                // GitHub returns ISO 8601 format, which includes 'Z' for UTC.
-                // We use Date.toISOString() to ensure the output format is YYYY-MM-DD
                 const date = new Date(dateString);
-                
-                // We want the date component based on UTC time, not local time.
-                // toISOString() returns format like "YYYY-MM-DDTHH:mm:ss.sssZ"
+                // Ensure we return the date part based on UTC
                 return date.toISOString().split('T')[0];
             }
 
@@ -101,17 +117,19 @@
                     fetchButton.disabled = true;
                     statusMessage.textContent = '';
                     resultCard.classList.add('d-none');
+                    
+                    updateStatus(`Fetching data for user ${username} started.`);
 
                     const response = await fetch(apiUrl, { headers });
 
                     if (!response.ok) {
+                        let errorMessage = `HTTP error! Status: ${response.status}`;
                         if (response.status === 404) {
-                            throw new Error(`User "${username}" not found on GitHub.`);
+                            errorMessage = `User "${username}" not found on GitHub.`;
+                        } else if (response.status === 401 || response.status === 403) {
+                            errorMessage = `Authentication failed or rate limit exceeded. Check your token.`;
                         }
-                        if (response.status === 401 || response.status === 403) {
-                            throw new Error(`Authentication failed or rate limit exceeded. Check your token.`);
-                        }
-                        throw new Error(`HTTP error! Status: ${response.status}`);
+                        throw new Error(errorMessage);
                     }
 
                     const data = await response.json();
@@ -121,10 +139,13 @@
                     usernameDisplay.textContent = `@${data.login}`;
                     createdAtDisplay.textContent = creationDateUTC;
                     resultCard.classList.remove('d-none');
+                    
+                    updateStatus(`Successfully fetched creation date for ${data.login}: ${creationDateUTC}.`);
 
                 } catch (error) {
                     statusMessage.textContent = `Error: ${error.message}`;
                     resultCard.classList.add('d-none');
+                    updateStatus(`Fetch failed for user ${username}. Error: ${error.message}`);
                 } finally {
                     loadingSpinner.style.display = 'none';
                     fetchButton.disabled = false;
@@ -147,6 +168,7 @@
                     fetchGitHubUser(username, token);
                 } else {
                     statusMessage.textContent = 'Please enter a GitHub username.';
+                    updateStatus('Please enter a GitHub username before submitting.');
                 }
             });
 
