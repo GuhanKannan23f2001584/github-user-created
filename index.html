@@ -3,182 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub User Info Fetcher</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>GitHub User Creation Date</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
     <style>
         body {
-            padding-top: 3rem;
             background-color: #f8f9fa;
         }
         .container {
             max-width: 600px;
         }
         #result-card {
-            margin-top: 20px;
+            min-height: 100px;
         }
-        .loading-spinner {
-            display: none;
-        }
-        /* Style for the live region to ensure accessibility feedback */
-        #github-status {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border-width: 0;
+        .display-6 {
+            font-weight: 300;
+            color: #0d6efd;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="text-center mb-4">GitHub Account Date Viewer</h1>
+    <div class="container mt-5">
+        <div class="card shadow-sm">
+            <div class="card-body p-4 p-md-5">
+                <h1 class="card-title text-center mb-3">GitHub Account Age</h1>
+                <p class="text-center text-muted mb-4">Enter a GitHub username to see when their account was created.</p>
+                
+                <form id="github-user-abc123" class="mb-4">
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-lg" id="username" placeholder="e.g., octocat" required aria-label="GitHub Username">
+                        <button class="btn btn-primary" type="submit" id="submit-button">Fetch</button>
+                    </div>
+                </form>
 
-        <!-- ARIA LIVE REGION FOR STATUS UPDATES -->
-        <div id="github-status" role="status" aria-live="polite"></div>
+                <div id="feedback" class="mb-3"></div>
 
-        <form id="github-user-abc123" class="p-4 border rounded shadow-sm bg-white">
-            <div class="mb-3">
-                <label for="usernameInput" class="form-label">GitHub Username</label>
-                <input type="text" class="form-control" id="usernameInput" placeholder="e.g., octocat" required>
-            </div>
-            <div class="mb-3">
-                <label for="tokenInput" class="form-label">Optional Token (for higher rate limits)</label>
-                <input type="password" class="form-control" id="tokenInput" placeholder="Enter token if available">
-            </div>
-            <button type="submit" class="btn btn-primary w-100" id="fetchButton">Fetch Creation Date</button>
-        </form>
+                <div id="result-card" class="card bg-light">
+                    <div class="card-body text-center d-flex flex-column justify-content-center">
+                        <h5 class="card-title text-secondary">Account Created On</h5>
+                        <p class="display-6 m-0" id="github-created-at"></p>
+                    </div>
+                </div>
 
-        <div id="result-card" class="card d-none">
-            <div class="card-header bg-info text-white">
-                Account Information
-            </div>
-            <div class="card-body">
-                <h5 class="card-title mb-3" id="github-username-display"></h5>
-                <p class="card-text">
-                    Account Created On (UTC): 
-                    <strong id="github-created-at" class="text-success">Loading...</strong>
-                </p>
-                <div id="statusMessage" class="mt-2 text-danger"></div>
             </div>
         </div>
-        
-        <div id="loadingSpinner" class="loading-spinner text-center mt-4">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p>Fetching data...</p>
-        </div>
-
+        <footer class="text-center text-muted mt-4">
+            <small>A simple GitHub API utility.</small>
+        </footer>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const form = document.getElementById('github-user-abc123');
-            const usernameInput = document.getElementById('usernameInput');
-            const tokenInput = document.getElementById('tokenInput');
-            const resultCard = document.getElementById('result-card');
-            const usernameDisplay = document.getElementById('github-username-display');
-            const createdAtDisplay = document.getElementById('github-created-at');
-            const statusMessage = document.getElementById('statusMessage');
-            const loadingSpinner = document.getElementById('loadingSpinner');
-            const fetchButton = document.getElementById('fetchButton');
-            const statusLiveRegion = document.getElementById('github-status'); // New element for ARIA live feedback
+            const usernameInput = document.getElementById('username');
+            const createdAtElement = document.getElementById('github-created-at');
+            const feedbackElement = document.getElementById('feedback');
+            const submitButton = document.getElementById('submit-button');
 
-            function updateStatus(message) {
-                statusLiveRegion.textContent = message;
-            }
+            const getApiToken = () => {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            };
 
-            function getQueryParams() {
-                const params = new URLSearchParams(window.location.search);
-                const token = params.get('token');
-                return { token };
-            }
+            const displayFeedback = (message, isError = false) => {
+                feedbackElement.innerHTML = `<div class="alert ${isError ? 'alert-danger' : 'alert-info'}" role="alert">${message}</div>`;
+                if (isError) {
+                    createdAtElement.textContent = 'N/A';
+                }
+            };
 
-            function parseDateUTC(dateString) {
-                const date = new Date(dateString);
-                // Ensure we return the date part based on UTC
-                return date.toISOString().split('T')[0];
-            }
+            const clearFeedback = () => {
+                feedbackElement.innerHTML = '';
+            };
+            
+            const fetchGitHubUser = async (username) => {
+                if (!username) return;
 
-            async function fetchGitHubUser(username, token) {
-                const apiUrl = `https://api.github.com/users/${username}`;
-                const headers = {};
+                submitButton.disabled = true;
+                submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Fetching...`;
+                clearFeedback();
+                createdAtElement.textContent = '';
 
+                const token = getApiToken();
+                const headers = {
+                    'Accept': 'application/vnd.github.v3+json',
+                };
                 if (token) {
-                    headers['Authorization'] = `token ${token}`;
+                    headers['Authorization'] = `Bearer ${token}`;
                 }
 
                 try {
-                    loadingSpinner.style.display = 'block';
-                    fetchButton.disabled = true;
-                    statusMessage.textContent = '';
-                    resultCard.classList.add('d-none');
-                    
-                    updateStatus(`Fetching data for user ${username} started.`);
-
-                    const response = await fetch(apiUrl, { headers });
+                    const response = await fetch(`https://api.github.com/users/${username}`, { headers });
 
                     if (!response.ok) {
-                        let errorMessage = `HTTP error! Status: ${response.status}`;
+                        let errorMessage = `Error: ${response.status} ${response.statusText}`;
                         if (response.status === 404) {
-                            errorMessage = `User "${username}" not found on GitHub.`;
-                        } else if (response.status === 401 || response.status === 403) {
-                            errorMessage = `Authentication failed or rate limit exceeded. Check your token.`;
+                            errorMessage = `User '${username}' not found.`;
+                        } else if (response.status === 403) {
+                            errorMessage = 'API rate limit exceeded. Please try again later or use a token via ?token=YOUR_TOKEN in the URL.';
                         }
                         throw new Error(errorMessage);
                     }
 
                     const data = await response.json();
+                    const createdAt = new Date(data.created_at);
+                    const formattedDate = createdAt.toISOString().split('T')[0] + ' UTC';
                     
-                    const creationDateUTC = parseDateUTC(data.created_at);
-                    
-                    usernameDisplay.textContent = `@${data.login}`;
-                    createdAtDisplay.textContent = creationDateUTC;
-                    resultCard.classList.remove('d-none');
-                    
-                    updateStatus(`Successfully fetched creation date for ${data.login}: ${creationDateUTC}.`);
+                    createdAtElement.textContent = formattedDate;
 
                 } catch (error) {
-                    statusMessage.textContent = `Error: ${error.message}`;
-                    resultCard.classList.add('d-none');
-                    updateStatus(`Fetch failed for user ${username}. Error: ${error.message}`);
+                    displayFeedback(error.message, true);
                 } finally {
-                    loadingSpinner.style.display = 'none';
-                    fetchButton.disabled = false;
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Fetch';
                 }
-            }
+            };
 
-            // 1. Handle URL parameters (?token=)
-            const { token: urlToken } = getQueryParams();
-            if (urlToken) {
-                tokenInput.value = urlToken;
-            }
-
-            // 2. Handle form submission
-            form.addEventListener('submit', (e) => {
-                e.preventDefault();
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
                 const username = usernameInput.value.trim();
-                const token = tokenInput.value.trim();
-
-                if (username) {
-                    fetchGitHubUser(username, token);
-                } else {
-                    statusMessage.textContent = 'Please enter a GitHub username.';
-                    updateStatus('Please enter a GitHub username before submitting.');
-                }
+                fetchGitHubUser(username);
             });
 
-            // 3. Initial Load attempt based on URL if username is present (e.g., ?user=octocat&token=...)
-            const params = new URLSearchParams(window.location.search);
-            const initialUsername = params.get('user');
-            if (initialUsername) {
-                usernameInput.value = initialUsername;
-                fetchGitHubUser(initialUsername, urlToken);
-            }
+            fetchGitHubUser('octocat');
         });
     </script>
 </body>
